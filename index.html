@@ -48,7 +48,7 @@
 <div class="container">
   <div class="card" style="padding-bottom: 8px;">
     <h2>🔋 ตรวจนับเครื่องสำรองไฟ (UPS)</h2>
-    <div class="sub-title">ระบบเชื่อมต่อ Google Sheets แบบ Real-time</div>
+    <div class="sub-title">ระบบเชื่อมต่อ Google Sheets & บันทึกลงเครื่องอัตโนมัติ</div>
     <div id="reader"></div>
     <div id="stepInfo" class="status-step">👉 พร้อมรับข้อมูล: [เลขครุภัณฑ์]</div>
   </div>
@@ -151,7 +151,7 @@
 </div>
 
 <script>
-  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWJdDRcYeytCCjrxM7oSrhZBpnMrCWDlZlVjb3GCNX_cGubhLoVNxsG6bK7BZFYYT8/exec";
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyO09QmrI8udBPUdwDco87MXjoUfCMMPwt3WVMW7bP5Ipd-eJr8daF0ZvRw50YUxpVxHA/exec";
 
   let targetFieldId = 'asset_id';
   let records = [];
@@ -272,9 +272,13 @@
     fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify(data)
-    }).catch(err => console.error("Sheet sync error:", err));
+    }).then(() => {
+      console.log("ส่งข้อมูลขึ้น Google Sheets เรียบร้อย");
+    }).catch(err => {
+      console.error("Sheet sync error:", err);
+    });
   }
 
   function saveData() {
