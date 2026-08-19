@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ระบบตรวจนับ UPS - รพ.ผศ.</title>
+  
+  <!-- ไลบรารีสแกนบาร์โค้ด & QR Code -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <!-- ไลบรารีอ่านตัวหนังสือจากภาพ (OCR) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: #eceff1; margin: 0; padding: 10px; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+    h2 { margin: 0 0 4px 0; font-size: 1.2rem; text-align: center; color: #2e7d32; }
+    .sub-title { font-size: 0.85rem; text-align: center; color: #666; margin-bottom: 8px; }
+    
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
+    
+    .status-step {
+      background: #e8f5e9; color: #1b5e20; padding: 8px;
+      border-radius: 6px; font-weight: bold; text-align: center; margin: 8px 0;
+      font-size: 0.9rem;
+    }
+    
+    .row { display: flex; gap: 8px; }
+    .col { flex: 1; }
+    
+    .form-group { margin-bottom: 8px; }
+    label { display: block; font-size: 0.8rem; font-weight: bold; color: #37474f; margin-bottom: 3px; }
+    input[type="text"] {
+      width: 100%; padding: 8px; border: 1px solid #cfd8dc;
+      border-radius: 6px; font-size: 0.9rem; background: #fff;
+    }
+    
+    .scan-target {
+      background: #fffde7 !important;
+      border-color: #fbc02d !important;
+      box-shadow: 0 0 5px rgba(251, 192, 45, 0.6);
+      cursor: pointer;
+    }
+    
+    .quick-chips { display: flex; gap: 4px; overflow-x: auto; margin-top: 4px; padding-bottom: 2px; }
+    .chip {
+      background: #e0f2f1; color: #004d40; border: 1px solid #80cbc4; padding: 4px 8px; border-radius: 12px;
+      font-size: 0.75rem; white-space: nowrap; cursor: pointer; font-weight: 500;
+    }
+    .chip:active { background: #4db6ac; color: #fff; }
+    
+    .chip-status {
+      background: #f1f8e9; color: #33691e; border: 1px solid #aed581;
+    }
+    
+    .btn-ocr {
+      background: #5e35b1; color: #fff; width: 100%; padding: 8px;
+      border: none; border-radius: 6px; font-size: 0.85rem; font-weight: bold;
+      margin-bottom: 10px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    }
+    
+    .btn-group { display: flex; gap: 6px; margin-top: 10px; }
+    button {
+      flex: 1; padding: 10px; border: none; border-radius: 6px;
+      font-size: 0.9rem; font-weight: bold; cursor: pointer;
+    }
+    .btn-save { background: #2e7d32; color: #fff; }
+    .btn-cancel { background: #78909c; color: #fff; display: none; }
+    .btn-clear-sn { background: #78909c; color: #fff; }
+    .btn-export { background: #00838f; color: #fff; width: 100%; margin-top: 6px; padding: 10px; }
+    
+    table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+    th { background: #f5f5f5; white-space: nowrap; }
+    .btn-action {
+      padding: 3px 6px; border: none; border-radius: 4px; font-size: 0.7rem;
+      color: #fff; cursor: pointer; margin-right: 2px;
+    }
+    .btn-edit { background: #f57c00; }
+    .btn-delete { background: #d32f2f; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card" style="padding-bottom: 8px;">
+    <h2>🔋 ตรวจนับเครื่องสำรองไฟ (UPS)</h2>
+    <div class="sub-title">ระบบสแกนบาร์โค้ด & OCR ข้อมูลครุภัณฑ์ รพ.ผศ.</div>
+    <div id="reader"></div>
+    <div id="stepInfo" class="status-step">👉 พร้อมรับข้อมูล: [เลขครุภัณฑ์]</div>
+  </div>
+
+  <div class="card">
+    <!-- ปุ่มอ่านตัวเลขด้วยภาพ OCR -->
+    <input type="file" id="ocrInput" accept="image/*" capture="environment" style="display:none" onchange="handleOCR(event)">
+    <button type="button" class="btn-ocr" onclick="document.getElementById('ocrInput').click()">
+      <span>📸 ถ่ายรูปอ่านตัวเลข (OCR) ลงช่องที่เลือก</span>
+      <span style="font-size:0.7rem; font-weight:normal; color:#e1bee7;">(แนะนำ: วางกล้องแนวนอนให้ตัวเลขเป็นแนวราบ)</span>
+    </button>
+
+    <!-- ข้อมูลสถานที่ (จำค่าไว้ ไม่ลบเมื่อกดบันทึก) -->
+    <div class="row">
+      <div class="col form-group">
+        <label>📍 อาคาร / ชั้น</label>
+        <input type="text" id="building" placeholder="เช่น อาคาร 1 ชั้น 2">
+      </div>
+      <div class="col form-group">
+        <label>🏢 แผนก / จุดใช้งาน</label>
+        <input type="text" id="dept" placeholder="เช่น แผนกผู้ป่วยนอก (OPD)">
+      </div>
+    </div>
+
+    <!-- ข้อมูลยี่ห้อ & กำลังไฟ -->
+    <div class="row">
+      <div class="col form-group">
+        <label>🏷️ ยี่ห้อ (Brand)</label>
+        <input type="text" id="brand" placeholder="ระบุยี่ห้อ">
+        <div class="quick-chips">
+          <button type="button" class="chip" onclick="setBrand('APC')">APC</button>
+          <button type="button" class="chip" onclick="setBrand('Cleanline')">Cleanline</button>
+          <button type="button" class="chip" onclick="setBrand('Syndome')">Syndome</button>
+          <button type="button" class="chip" onclick="setBrand('Eaton')">Eaton</button>
+          <button type="button" class="chip" onclick="setBrand('CyberPower')">CyberPower</button>
+        </div>
+      </div>
+      <div class="col form-group">
+        <label>⚡ กำลังไฟ (VA / W)</label>
+        <input type="text" id="capacity" placeholder="เช่น 1000VA / 600W">
+        <div class="quick-chips">
+          <button type="button" class="chip" onclick="setCapacity('800VA / 480W')">800VA</button>
+          <button type="button" class="chip" onclick="setCapacity('1000VA / 600W')">1000VA</button>
+          <button type="button" class="chip" onclick="setCapacity('1500VA / 900W')">1500VA</button>
+          <button type="button" class="chip" onclick="setCapacity('2000VA / 1200W')">2000VA</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- เลขครุภัณฑ์ & S/N -->
+    <div class="form-group">
+      <label>🔢 เลขครุภัณฑ์ (แตะเพื่อสลับมารับข้อมูลช่องนี้)</label>
+      <input type="text" id="asset_id" class="scan-target" placeholder="สแกน, ถ่ายรูป หรือพิมพ์เลขครุภัณฑ์" onclick="setScanTarget('asset_id')">
+    </div>
+
+    <div class="form-group">
+      <label>📷 S/N เครื่องสำรองไฟ (UPS S/N)</label>
+      <input type="text" id="serial_no" placeholder="สแกน, ถ่ายรูป หรือพิมพ์ S/N" onclick="setScanTarget('serial_no')">
+    </div>
+
+    <!-- สถานะแบตเตอรี่ -->
+    <div class="form-group">
+      <label>🔋 สถานะเครื่อง / แบตเตอรี่</label>
+      <input type="text" id="battery_status" value="ปกติ (สำรองไฟได้)">
+      <div class="quick-chips">
+        <button type="button" class="chip chip-status" onclick="setStatus('ปกติ (สำรองไฟได้)')">✅ ปกติ</button>
+        <button type="button" class="chip chip-status" onclick="setStatus('แบตเสื่อม (ไม่สำรองไฟ)')">⚠️ แบตเสื่อม</button>
+        <button type="button" class="chip chip-status" onclick="setStatus('เปิดไม่ติด / ชำรุด')">❌ ชำรุด</button>
+        <button type="button" class="chip chip-status" onclick="setStatus('รอเปลี่ยนแบต')">🔄 รอเปลี่ยนแบต</button>
+      </div>
+    </div>
+
+    <!-- หมายเหตุ -->
+    <div class="form-group">
+      <label>📝 หมายเหตุ</label>
+      <input type="text" id="remark" placeholder="เช่น ต่อกับเครื่องจ่ายยา, วางใต้โต๊ะ">
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-clear-sn" type="button" id="btnClear" onclick="clearItemFields()">ล้างช่องข้อมูล</button>
+      <button class="btn-cancel" type="button" id="btnCancelEdit" onclick="cancelEdit()">ยกเลิกแก้ไข</button>
+      <button class="btn-save" type="button" id="btnSave" onclick="saveData()">💾 บันทึกข้อมูล UPS (Add)</button>
+    </div>
+  </div>
+
+  <!-- ตารางแสดงรายการ -->
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <strong>รายการ UPS ที่บันทึก (<span id="totalCount">0</span> เครื่อง)</strong>
+    </div>
+    <button class="btn-export" onclick="exportToCSV()">📥 ดาวน์โหลดไฟล์ Excel (CSV)</button>
+    
+    <div style="overflow-x: auto; max-height: 280px; overflow-y: auto; margin-top: 8px;">
+      <table>
+        <thead>
+          <tr>
+            <th>จัดการ</th>
+            <th>ลำดับ</th>
+            <th>เลขครุภัณฑ์</th>
+            <th>อาคาร / ชั้น</th>
+            <th>แผนก / จุดใช้งาน</th>
+            <th>ยี่ห้อ</th>
+            <th>กำลังไฟ (VA)</th>
+            <th>S/N (Serial Number)</th>
+            <th>สถานะแบตเตอรี่</th>
+            <th>หมายเหตุ</th>
+          </tr>
+        </thead>
+        <tbody id="dataTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  let targetFieldId = 'asset_id';
+  let records = [];
+  let editIndex = -1;
+  let isCooldown = false;
+
+  function setBrand(val) { document.getElementById('brand').value = val; }
+  function setCapacity(val) { document.getElementById('capacity').value = val; }
+  function setStatus(val) { document.getElementById('battery_status').value = val; }
+
+  function setScanTarget(fieldId) {
+    targetFieldId = fieldId;
+    document.getElementById('asset_id').classList.remove('scan-target');
+    document.getElementById('serial_no').classList.remove('scan-target');
+    
+    document.getElementById(fieldId).classList.add('scan-target');
+    const labelName = fieldId === 'asset_id' ? 'เลขครุภัณฑ์' : 'S/N (Serial Number)';
+    document.getElementById('stepInfo').innerText = `👉 พร้อมรับข้อมูล: [${labelName}]`;
+    document.getElementById('stepInfo').style.background = "#e8f5e9";
+    document.getElementById('stepInfo').style.color = "#1b5e20";
+  }
+
+  function playBeep() {
+    if (navigator.vibrate) navigator.vibrate(80);
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(1000, ctx.currentTime);
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  }
+
+  function onScanSuccess(decodedText) {
+    if (isCooldown) return;
+    playBeep();
+    isCooldown = true;
+
+    const val = decodedText.trim();
+    document.getElementById(targetFieldId).value = val;
+
+    document.getElementById('stepInfo').innerText = `✅ สแกนสำเร็จ: ${val}`;
+    document.getElementById('stepInfo').style.background = "#c8e6c9";
+    document.getElementById('stepInfo').style.color = "#2e7d32";
+
+    if (targetFieldId === 'asset_id') {
+      setTimeout(() => { setScanTarget('serial_no'); }, 500);
+    }
+
+    setTimeout(() => { isCooldown = false; }, 1000);
+  }
+
+  async function handleOCR(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const statusEl = document.getElementById('stepInfo');
+    statusEl.innerText = "⏳ กำลังอ่านข้อความจากภาพ... กรุณารอสักครู่";
+    statusEl.style.background = "#fff3e0";
+    statusEl.style.color = "#e65100";
+
+    try {
+      const result = await Tesseract.recognize(file, 'eng+tha');
+      let text = result.data.text.trim().replace(/\r?\n|\r/g, " ");
+
+      if (text) {
+        document.getElementById(targetFieldId).value = text;
+        statusEl.innerText = `✅ OCR สำเร็จ: ${text.substring(0, 25)}...`;
+        statusEl.style.background = "#c8e6c9";
+        statusEl.style.color = "#2e7d32";
+        playBeep();
+
+        if (targetFieldId === 'asset_id') {
+          setTimeout(() => { setScanTarget('serial_no'); }, 500);
+        }
+      } else {
+        statusEl.innerText = "⚠️ ไม่พบข้อความในภาพ กรุณาถ่ายใหม่ให้ชัดเจน";
+        statusEl.style.background = "#ffebee";
+        statusEl.style.color = "#c62828";
+      }
+    } catch (err) {
+      console.error(err);
+      statusEl.innerText = "❌ เกิดข้อผิดพลาดในการอ่านภาพ";
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function renderTable() {
+    const tbody = document.getElementById('dataTableBody');
+    tbody.innerHTML = "";
+
+    records.forEach((r, index) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="white-space: nowrap;">
+          <button type="button" class="btn-action btn-edit" onclick="startEdit(${index})">✏️</button>
+          <button type="button" class="btn-action btn-delete" onclick="deleteRecord(${index})">🗑️</button>
+        </td>
+        <td style="text-align:center;">${index + 1}</td>
+        <td><strong>${r.asset_id}</strong></td>
+        <td>${r.building}</td>
+        <td>${r.dept}</td>
+        <td>${r.brand}</td>
+        <td>${r.capacity}</td>
+        <td><strong>${r.serial_no}</strong></td>
+        <td>${r.battery_status}</td>
+        <td>${r.remark}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('totalCount').innerText = records.length;
+  }
+
+  function saveData() {
+    const building       = document.getElementById('building').value.trim();
+    const dept           = document.getElementById('dept').value.trim();
+    const brand          = document.getElementById('brand').value.trim();
+    const capacity       = document.getElementById('capacity').value.trim();
+    const asset_id       = document.getElementById('asset_id').value.trim();
+    const serial_no      = document.getElementById('serial_no').value.trim();
+    const battery_status = document.getElementById('battery_status').value.trim();
+    const remark         = document.getElementById('remark').value.trim();
+
+    if (!serial_no && !asset_id) {
+      alert("กรุณาระบุ 'เลขครุภัณฑ์' หรือ 'S/N' อย่างน้อย 1 อย่าง");
+      return;
+    }
+
+    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+
+    if (editIndex >= 0) {
+      records[editIndex] = {
+        ...records[editIndex],
+        building, dept, brand, capacity, asset_id, serial_no, battery_status, remark
+      };
+      cancelEdit();
+    } else {
+      records.push({
+        asset_id, building, dept, brand, capacity, serial_no, battery_status, remark, time: now
+      });
+      clearItemFields();
+      setScanTarget('asset_id');
+    }
+
+    renderTable();
+  }
+
+  function startEdit(index) {
+    editIndex = index;
+    const r = records[index];
+
+    document.getElementById('building').value = r.building;
+    document.getElementById('dept').value = r.dept;
+    document.getElementById('brand').value = r.brand;
+    document.getElementById('capacity').value = r.capacity;
+    document.getElementById('asset_id').value = r.asset_id;
+    document.getElementById('serial_no').value = r.serial_no;
+    document.getElementById('battery_status').value = r.battery_status;
+    document.getElementById('remark').value = r.remark;
+
+    document.getElementById('btnSave').innerText = "🔄 บันทึกการแก้ไข (Update)";
+    document.getElementById('btnSave').style.background = "#f57c00";
+    document.getElementById('btnCancelEdit').style.display = "block";
+    document.getElementById('btnClear').style.display = "none";
+
+    document.getElementById('stepInfo').innerText = `✏️ กำลังแก้ไข UPS ลำดับที่ ${index + 1}`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelEdit() {
+    editIndex = -1;
+    clearItemFields();
+    document.getElementById('btnSave').innerText = "💾 บันทึกข้อมูล UPS (Add)";
+    document.getElementById('btnSave').style.background = "#2e7d32";
+    document.getElementById('btnCancelEdit').style.display = "none";
+    document.getElementById('btnClear').style.display = "block";
+    setScanTarget('asset_id');
+  }
+
+  function deleteRecord(index) {
+    if (confirm(`คุณต้องการลบข้อมูลลำดับที่ ${index + 1} ใช่หรือไม่?`)) {
+      records.splice(index, 1);
+      if (editIndex === index) cancelEdit();
+      renderTable();
+    }
+  }
+
+  function clearItemFields() {
+    document.getElementById('asset_id').value = '';
+    document.getElementById('serial_no').value = '';
+    document.getElementById('remark').value = '';
+    document.getElementById('battery_status').value = 'ปกติ (สำรองไฟได้)';
+  }
+
+  function exportToCSV() {
+    if (records.length === 0) {
+      alert("ยังไม่มีข้อมูลที่บันทึก");
+      return;
+    }
+
+    let csv = "\uFEFFลำดับ,เลขครุภัณฑ์,อาคาร / ชั้น,แผนก / จุดใช้งาน,ยี่ห้อ,ขนาดกำลังไฟ,S/N (Serial Number),สถานะแบตเตอรี่,หมายเหตุ,เวลาบันทึก\n";
+    
+    records.forEach((r, idx) => {
+      csv += `"${idx + 1}","${r.asset_id}","${r.building}","${r.dept}","${r.brand}","${r.capacity}","${r.serial_no}","${r.battery_status}","${r.remark}","${r.time || ''}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `รายการตรวจนับ_UPS_รพ_ผศ_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  const html5QrCode = new Html5Qrcode("reader");
+  html5QrCode.start(
+    { facingMode: "environment" },
+    {
+      fps: 15,
+      qrbox: { width: 280, height: 160 },
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.QR_CODE
+      ]
+    },
+    onScanSuccess
+  ).catch(err => {
+    console.error(err);
+    document.getElementById('stepInfo').innerText = "❌ กรุณาอนุญาตการเข้าถึงกล้อง";
+  });
+</script>
+
+</body>
+</html>
