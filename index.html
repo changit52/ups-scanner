@@ -1,3 +1,6 @@
+ใส่ URL ของ Google Apps Script เข้าไปในโค้ดให้เรียบร้อยแล้ว คัดลอกโค้ดทั้งหมดนี้ไปวางทับในไฟล์ **`index.html`** บน GitHub แล้วกด **Commit changes** ได้ทันที เมื่อกดบันทึกข้อมูลในมือถือ ข้อมูลจะวิ่งเข้า Google Sheet แบบ Real-time ทันที
+
+```html
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -25,6 +28,8 @@
     .scan-target { background: #fffde7 !important; border-color: #fbc02d !important; box-shadow: 0 0 6px rgba(251, 192, 45, 0.7); cursor: pointer; }
     .quick-chips { display: flex; gap: 4px; overflow-x: auto; margin-top: 4px; padding-bottom: 2px; }
     .chip { background: #e0f2f1; color: #004d40; border: 1px solid #80cbc4; padding: 4px 8px; border-radius: 12px; font-size: 0.75rem; white-space: nowrap; cursor: pointer; font-weight: 500; }
+    .chip:active { background: #4db6ac; color: #fff; }
+    .chip-status { background: #f1f8e9; color: #33691e; border: 1px solid #aed581; }
     .btn-ocr { background: #5e35b1; color: #fff; width: 100%; padding: 8px; border: none; border-radius: 6px; font-size: 0.85rem; font-weight: bold; margin-bottom: 10px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
     .btn-group { display: flex; gap: 6px; margin-top: 10px; }
     button { flex: 1; padding: 10px; border: none; border-radius: 6px; font-size: 0.9rem; font-weight: bold; cursor: pointer; }
@@ -32,6 +37,7 @@
     .btn-cancel { background: #78909c; color: #fff; display: none; }
     .btn-clear-sn { background: #78909c; color: #fff; }
     .btn-export { background: #00838f; color: #fff; width: 100%; margin-top: 6px; padding: 10px; }
+    .btn-clear-all { background: #b0bec5; color: #37474f; font-size: 0.75rem; padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; }
     table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 8px; }
     th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
     th { background: #f5f5f5; white-space: nowrap; }
@@ -45,7 +51,7 @@
 <div class="container">
   <div class="card" style="padding-bottom: 8px;">
     <h2>🔋 ตรวจนับเครื่องสำรองไฟ (UPS)</h2>
-    <div class="sub-title">ระบบสแกนความแม่นยำสูง (Auto-Clean Mode)</div>
+    <div class="sub-title">ระบบเชื่อมต่อ Google Sheets แบบ Real-time</div>
     <div id="reader"></div>
     <div id="stepInfo" class="status-step">👉 พร้อมรับข้อมูล: [เลขครุภัณฑ์]</div>
   </div>
@@ -54,28 +60,38 @@
     <input type="file" id="ocrInput" accept="image/*" capture="environment" style="display:none" onchange="handleOCR(event)">
     <button type="button" class="btn-ocr" onclick="document.getElementById('ocrInput').click()">
       <span>📸 ถ่ายรูปอ่านตัวเลข (OCR) ลงช่องที่เลือก</span>
-      <span style="font-size:0.7rem; font-weight:normal; color:#e1bee7;">(แนวนอนแม่นยำที่สุด)</span>
+      <span style="font-size:0.7rem; font-weight:normal; color:#e1bee7;">(แนะนำ: ถ่ายรูปในแนวนอน)</span>
     </button>
 
     <div class="row">
       <div class="col form-group">
         <label>📍 อาคาร / ชั้น</label>
-        <input type="text" id="building" placeholder="เช่น อาคาร 1 ชั้น 2">
+        <input type="text" id="building" placeholder="เช่น อาคาร 1 ชั้น 2" onchange="saveLocationState()">
       </div>
       <div class="col form-group">
         <label>🏢 แผนก</label>
-        <input type="text" id="dept" placeholder="เช่น OPD">
+        <input type="text" id="dept" placeholder="เช่น OPD" onchange="saveLocationState()">
       </div>
     </div>
 
     <div class="row">
       <div class="col form-group">
         <label>🏷️ ยี่ห้อ</label>
-        <input type="text" id="brand" placeholder="ระบุยี่ห้อ">
+        <input type="text" id="brand" placeholder="ระบุยี่ห้อ" onchange="saveLocationState()">
+        <div class="quick-chips">
+          <button type="button" class="chip" onclick="setBrand('APC')">APC</button>
+          <button type="button" class="chip" onclick="setBrand('Cleanline')">Cleanline</button>
+          <button type="button" class="chip" onclick="setBrand('Syndome')">Syndome</button>
+          <button type="button" class="chip" onclick="setBrand('NUBOS')">NUBOS</button>
+        </div>
       </div>
       <div class="col form-group">
         <label>⚡ กำลังไฟ</label>
-        <input type="text" id="capacity" placeholder="เช่น 1000VA">
+        <input type="text" id="capacity" placeholder="เช่น 1000VA" onchange="saveLocationState()">
+        <div class="quick-chips">
+          <button type="button" class="chip" onclick="setCapacity('800VA / 480W')">800VA</button>
+          <button type="button" class="chip" onclick="setCapacity('1000VA / 500W')">1000VA</button>
+        </div>
       </div>
     </div>
 
@@ -92,6 +108,11 @@
     <div class="form-group">
       <label>🔋 สถานะเครื่อง / แบตเตอรี่</label>
       <input type="text" id="battery_status" value="ปกติ (สำรองไฟได้)">
+      <div class="quick-chips">
+        <button type="button" class="chip chip-status" onclick="setStatus('ปกติ (สำรองไฟได้)')">✅ ปกติ</button>
+        <button type="button" class="chip chip-status" onclick="setStatus('แบตเสื่อม (ไม่สำรองไฟ)')">⚠️ แบตเสื่อม</button>
+        <button type="button" class="chip chip-status" onclick="setStatus('ชำรุด')">❌ ชำรุด</button>
+      </div>
     </div>
 
     <div class="form-group">
@@ -100,7 +121,7 @@
     </div>
 
     <div class="btn-group">
-      <button class="btn-clear-sn" type="button" id="btnClear" onclick="clearItemFields()">ล้างค่า</button>
+      <button class="btn-clear-sn" type="button" id="btnClear" onclick="clearItemFields()">ล้างค่าฟอร์ม</button>
       <button class="btn-cancel" type="button" id="btnCancelEdit" onclick="cancelEdit()">ยกเลิกแก้ไข</button>
       <button class="btn-save" type="button" id="btnSave" onclick="saveData()">💾 บันทึกข้อมูล (Add)</button>
     </div>
@@ -109,17 +130,21 @@
   <div class="card">
     <div style="display:flex; justify-content:space-between; align-items:center;">
       <strong>รายการที่บันทึก (<span id="totalCount">0</span>)</strong>
+      <button class="btn-clear-all" type="button" onclick="clearAllData()">🗑️ ล้างตารางในเครื่อง</button>
     </div>
-    <button class="btn-export" onclick="exportToCSV()">📥 ดาวน์โหลด Excel (CSV)</button>
+    <button class="btn-export" onclick="exportToCSV()">📥 ดาวน์โหลด Excel สำรอง (CSV)</button>
     <div style="overflow-x: auto; max-height: 280px; overflow-y: auto; margin-top: 8px;">
       <table>
         <thead>
           <tr>
             <th>จัดการ</th>
+            <th>ลำดับ</th>
             <th>เลขครุภัณฑ์</th>
             <th>S/N</th>
             <th>ยี่ห้อ</th>
+            <th>กำลังไฟ</th>
             <th>สถานะ</th>
+            <th>หมายเหตุ</th>
           </tr>
         </thead>
         <tbody id="dataTableBody"></tbody>
@@ -129,13 +154,49 @@
 </div>
 
 <script>
+  const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWJdDRcYeytCCjrxM7oSrhZBpnMrCWDlZlVjb3GCNX_cGubhLoVNxsG6bK7BZFYYT8/exec";
+
   let targetFieldId = 'asset_id';
   let records = [];
   let editIndex = -1;
   let isScanLocked = false;
   let lastScannedTime = 0;
 
-  // ฟังก์ชันช่วยทำความสะอาดข้อมูล (ตัดเลข 0 หน้าออก)
+  window.addEventListener('DOMContentLoaded', () => {
+    loadSavedData();
+  });
+
+  function setBrand(val) { document.getElementById('brand').value = val; saveLocationState(); }
+  function setCapacity(val) { document.getElementById('capacity').value = val; saveLocationState(); }
+  function setStatus(val) { document.getElementById('battery_status').value = val; }
+
+  function loadSavedData() {
+    try {
+      const savedRecords = localStorage.getItem('ups_records_data');
+      if (savedRecords) {
+        records = JSON.parse(savedRecords);
+        renderTable();
+      }
+      if (localStorage.getItem('ups_building')) document.getElementById('building').value = localStorage.getItem('ups_building');
+      if (localStorage.getItem('ups_dept')) document.getElementById('dept').value = localStorage.getItem('ups_dept');
+      if (localStorage.getItem('ups_brand')) document.getElementById('brand').value = localStorage.getItem('ups_brand');
+      if (localStorage.getItem('ups_capacity')) document.getElementById('capacity').value = localStorage.getItem('ups_capacity');
+    } catch(e) {
+      console.error("Error loading local storage", e);
+    }
+  }
+
+  function saveLocationState() {
+    localStorage.setItem('ups_building', document.getElementById('building').value);
+    localStorage.setItem('ups_dept', document.getElementById('dept').value);
+    localStorage.setItem('ups_brand', document.getElementById('brand').value);
+    localStorage.setItem('ups_capacity', document.getElementById('capacity').value);
+  }
+
+  function persistRecords() {
+    localStorage.setItem('ups_records_data', JSON.stringify(records));
+  }
+
   function cleanData(text) {
     let s = text.trim();
     if (s.length === 14 && s.startsWith('0')) {
@@ -149,6 +210,8 @@
     document.getElementById('asset_id').classList.remove('scan-target');
     document.getElementById('serial_no').classList.remove('scan-target');
     document.getElementById(fieldId).classList.add('scan-target');
+    const label = fieldId === 'asset_id' ? 'เลขครุภัณฑ์' : 'S/N';
+    document.getElementById('stepInfo').innerText = `👉 พร้อมรับข้อมูล: [${label}]`;
   }
 
   function playBeep() { if (navigator.vibrate) navigator.vibrate(80); }
@@ -188,13 +251,37 @@
     tbody.innerHTML = "";
     records.forEach((r, index) => {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td><button class="btn-action btn-edit" onclick="startEdit(${index})">✏️</button><button class="btn-action btn-delete" onclick="deleteRecord(${index})">🗑️</button></td><td>${r.asset_id}</td><td>${r.serial_no}</td><td>${r.brand}</td><td>${r.battery_status}</td>`;
+      tr.innerHTML = `
+        <td>
+          <button class="btn-action btn-edit" onclick="startEdit(${index})">✏️</button>
+          <button class="btn-action btn-delete" onclick="deleteRecord(${index})">🗑️</button>
+        </td>
+        <td style="text-align:center;">${index + 1}</td>
+        <td><strong>${r.asset_id}</strong></td>
+        <td>${r.serial_no}</td>
+        <td>${r.brand}</td>
+        <td>${r.capacity}</td>
+        <td>${r.battery_status}</td>
+        <td>${r.remark}</td>
+      `;
       tbody.appendChild(tr);
     });
     document.getElementById('totalCount').innerText = records.length;
   }
 
+  function syncToGoogleSheets(data) {
+    if (!GOOGLE_SCRIPT_URL) return;
+
+    fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    }).catch(err => console.error("Sheet sync error:", err));
+  }
+
   function saveData() {
+    saveLocationState();
     const r = {
       asset_id: document.getElementById('asset_id').value.trim(),
       serial_no: cleanData(document.getElementById('serial_no').value),
@@ -202,41 +289,108 @@
       capacity: document.getElementById('capacity').value.trim(),
       battery_status: document.getElementById('battery_status').value.trim(),
       remark: document.getElementById('remark').value.trim(),
-      building: document.getElementById('building').value,
-      dept: document.getElementById('dept').value,
-      time: new Date().toISOString().substring(0, 19)
+      building: document.getElementById('building').value.trim(),
+      dept: document.getElementById('dept').value.trim(),
+      time: new Date().toISOString().substring(0, 19).replace('T', ' ')
     };
-    if (editIndex >= 0) { records[editIndex] = r; cancelEdit(); }
-    else { records.push(r); clearItemFields(); setScanTarget('asset_id'); }
+
+    if (!r.asset_id && !r.serial_no) {
+      alert("กรุณาระบุเลขครุภัณฑ์หรือ S/N");
+      return;
+    }
+
+    if (editIndex >= 0) {
+      records[editIndex] = r;
+      cancelEdit();
+    } else {
+      records.push(r);
+      syncToGoogleSheets(r);
+      clearItemFields();
+      setScanTarget('asset_id');
+    }
+
+    persistRecords();
     renderTable();
   }
 
   function startEdit(index) {
-    editIndex = index; const r = records[index];
-    document.getElementById('asset_id').value = r.asset_id;
-    document.getElementById('serial_no').value = r.serial_no;
+    editIndex = index;
+    const r = records[index];
+    document.getElementById('building').value = r.building;
+    document.getElementById('dept').value = r.dept;
     document.getElementById('brand').value = r.brand;
     document.getElementById('capacity').value = r.capacity;
+    document.getElementById('asset_id').value = r.asset_id;
+    document.getElementById('serial_no').value = r.serial_no;
     document.getElementById('battery_status').value = r.battery_status;
     document.getElementById('remark').value = r.remark;
-    document.getElementById('btnSave').innerText = "Update";
+
+    document.getElementById('btnSave').innerText = "🔄 บันทึกการแก้ไข (Update)";
+    document.getElementById('btnSave').style.background = "#f57c00";
     document.getElementById('btnCancelEdit').style.display = "block";
     document.getElementById('btnClear').style.display = "none";
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function cancelEdit() { editIndex = -1; clearItemFields(); document.getElementById('btnSave').innerText = "💾 บันทึกข้อมูล (Add)"; document.getElementById('btnCancelEdit').style.display = "none"; document.getElementById('btnClear').style.display = "block"; }
-  function deleteRecord(index) { if (confirm("ลบใช่ไหม?")) { records.splice(index, 1); renderTable(); } }
-  function clearItemFields() { document.getElementById('asset_id').value = 'รพ.ผศ.7440-204-0001-2569/'; document.getElementById('serial_no').value = ''; }
-  
+  function cancelEdit() {
+    editIndex = -1;
+    clearItemFields();
+    document.getElementById('btnSave').innerText = "💾 บันทึกข้อมูล (Add)";
+    document.getElementById('btnSave').style.background = "#2e7d32";
+    document.getElementById('btnCancelEdit').style.display = "none";
+    document.getElementById('btnClear').style.display = "block";
+    setScanTarget('asset_id');
+  }
+
+  function deleteRecord(index) {
+    if (confirm(`คุณต้องการลบรายการลำดับที่ ${index + 1} ในเครื่องใช่หรือไม่?`)) {
+      records.splice(index, 1);
+      if (editIndex === index) cancelEdit();
+      persistRecords();
+      renderTable();
+    }
+  }
+
+  function clearAllData() {
+    if (records.length === 0) return alert("ไม่มีข้อมูลในตาราง");
+    if (confirm("คุณต้องการล้างประวัติตารางในเครื่องมือถือใช่หรือไม่? (ข้อมูลใน Google Sheet จะไม่ถูกลบ)")) {
+      records = [];
+      persistRecords();
+      cancelEdit();
+      renderTable();
+    }
+  }
+
+  function clearItemFields() {
+    document.getElementById('asset_id').value = 'รพ.ผศ.7440-204-0001-2569/';
+    document.getElementById('serial_no').value = '';
+    document.getElementById('remark').value = '';
+  }
+
   function exportToCSV() {
-    let csv = "\uFEFFลำดับ,เลขครุภัณฑ์,S/N,ยี่ห้อ,กำลังไฟ,สถานะ,หมายเหตุ,เวลา\n";
-    records.forEach((r, i) => csv += `"${i+1}","${r.asset_id}","${r.serial_no}","${r.brand}","${r.capacity}","${r.battery_status}","${r.remark}","${r.time}"\n`);
+    if (records.length === 0) return alert("ไม่มีข้อมูลที่บันทึก");
+    let csv = "\uFEFFลำดับ,เวลา,เลขครุภัณฑ์,S/N,ยี่ห้อ,กำลังไฟ,สถานะ,อาคาร/ชั้น,แผนก,หมายเหตุ\n";
+    records.forEach((r, i) => {
+      csv += `"${i+1}","${r.time}","${r.asset_id}","${r.serial_no}","${r.brand}","${r.capacity}","${r.battery_status}","${r.building}","${r.dept}","${r.remark}"\n`;
+    });
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "UPS_Data.csv"; link.click();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `UPS_Data_${new Date().toISOString().slice(0,10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 
   const html5QrCode = new Html5Qrcode("reader");
-  html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 280, height: 160 } }, onScanSuccess).catch(console.error);
+  html5QrCode.start(
+    { facingMode: "environment" },
+    { fps: 10, qrbox: { width: 280, height: 160 } },
+    onScanSuccess
+  ).catch(console.error);
 </script>
 </body>
 </html>
+
+```
