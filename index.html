@@ -17,12 +17,12 @@
     h2 { margin: 0 0 4px 0; font-size: 1.2rem; text-align: center; color: #2e7d32; }
     .sub-title { font-size: 0.85rem; text-align: center; color: #666; margin-bottom: 8px; }
     
-    #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 240px; }
+    #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #263238; min-height: 220px; }
     
     .status-step {
       background: #e8f5e9; color: #1b5e20; padding: 10px;
       border-radius: 6px; font-weight: bold; text-align: center; margin: 8px 0;
-      font-size: 0.9rem; transition: all 0.3s;
+      font-size: 0.9rem;
     }
     
     .row { display: flex; gap: 8px; }
@@ -49,8 +49,12 @@
     }
     .chip:active { background: #4db6ac; color: #fff; }
     
-    .chip-status {
-      background: #f1f8e9; color: #33691e; border: 1px solid #aed581;
+    .chip-status { background: #f1f8e9; color: #33691e; border: 1px solid #aed581; }
+    
+    .btn-cam {
+      background: #00897b; color: #fff; width: 100%; padding: 6px;
+      border: none; border-radius: 6px; font-size: 0.8rem; font-weight: bold;
+      margin-bottom: 6px; cursor: pointer;
     }
     
     .btn-ocr {
@@ -85,7 +89,8 @@
 <div class="container">
   <div class="card" style="padding-bottom: 8px;">
     <h2>🔋 ตรวจนับเครื่องสำรองไฟ (UPS)</h2>
-    <div class="sub-title">ระบบสแกนความแม่นยำสูง (Anti-Shake & Anti-Duplicate)</div>
+    <div class="sub-title">ระบบสแกนบาร์โค้ด & OCR รพ.ผศ.</div>
+    <button type="button" class="btn-cam" onclick="startCamera()">🎥 กดตรงนี้เพื่อเปิดกล้อง / ลองใหม่</button>
     <div id="reader"></div>
     <div id="stepInfo" class="status-step">👉 พร้อมรับข้อมูล: [เลขครุภัณฑ์]</div>
   </div>
@@ -94,7 +99,7 @@
     <input type="file" id="ocrInput" accept="image/*" capture="environment" style="display:none" onchange="handleOCR(event)">
     <button type="button" class="btn-ocr" onclick="document.getElementById('ocrInput').click()">
       <span>📸 ถ่ายรูปอ่านตัวเลข (OCR)</span>
-      <span style="font-size:0.7rem; font-weight:normal; color:#e1bee7;">(แนะนำ: วางแนวนอนเพื่อความแม่นยำ)</span>
+      <span style="font-size:0.7rem; font-weight:normal; color:#e1bee7;">(แนะนำ: ถ่ายรูปในแนวนอน)</span>
     </button>
 
     <div class="row">
@@ -190,11 +195,10 @@
   let targetFieldId = 'asset_id';
   let records = [];
   let editIndex = -1;
-  
-  // ระบบควมคุมการสแกน ป้องกันการยิงซ้ำ/กระตุก
   let isScanLocked = false;
   let lastScannedText = "";
   let lastScannedTime = 0;
+  let html5QrCode = null;
 
   function setBrand(val) { document.getElementById('brand').value = val; }
   function setCapacity(val) { document.getElementById('capacity').value = val; }
@@ -213,7 +217,7 @@
   }
 
   function playBeep() {
-    if (navigator.vibrate) navigator.vibrate(100);
+    if (navigator.vibrate) navigator.vibrate(80);
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = ctx.createOscillator();
@@ -225,14 +229,10 @@
     } catch(e){}
   }
 
-  // ฟังก์ชันตรวจจับเมื่อสแกนสำเร็จ (ปรับปรุงลดการสแกนซ้ำ)
   function onScanSuccess(decodedText) {
     const now = Date.now();
     const cleanText = decodedText.trim();
 
-    // กฎป้องกันการสแกนซ้ำ:
-    // 1. กำลังอยู่ในสถานะล็อกหลังสแกน
-    // 2. เป็นค่าเดิมที่เพิ่งยิงไปไม่ถึง 3 วินาที
     if (isScanLocked || (cleanText === lastScannedText && (now - lastScannedTime) < 3000)) {
       return;
     }
@@ -249,15 +249,11 @@
     statusEl.style.background = "#c8e6c9";
     statusEl.style.color = "#2e7d32";
 
-    // สลับช่องอัตโนมัติเมื่อยิงเลขครุภัณฑ์เสร็จ
     if (targetFieldId === 'asset_id') {
       setTimeout(() => { setScanTarget('serial_no'); }, 600);
     }
 
-    // ปลดล็อกระบบสแกนหลังผ่านไป 2 วินาที
-    setTimeout(() => {
-      isScanLocked = false;
-    }, 2000);
+    setTimeout(() => { isScanLocked = false; }, 2000);
   }
 
   async function handleOCR(event) {
@@ -400,38 +396,53 @@
     document.body.removeChild(link);
   }
 
-  // ปรับค่าความเสถียรของกล้องและระบบจับบาร์โค้ด
-  const html5QrCode = new Html5Qrcode("reader");
-  const scannerConfig = {
-    fps: 10, // ปรับลดเป็น 10 fps เพื่อให้ชิปมือถือประมวลผลทัน ไม่กระตุกหรือร้อน
-    qrbox: function(viewfinderWidth, viewfinderHeight) {
-      // ปรับกรอบสแกนแนวนอนกว้าง 85% รองรับบาร์โค้ดทางยาว
-      return {
-        width: Math.floor(viewfinderWidth * 0.85),
-        height: Math.floor(viewfinderHeight * 0.45)
+  // ฟังก์ชันเริ่มการทำงานกล้อง (แบบ Universal รองรับทุกอุปกรณ์)
+  async function startCamera() {
+    const statusEl = document.getElementById('stepInfo');
+    statusEl.innerText = "⏳ กำลังเชื่อมต่อกล้อง...";
+    statusEl.style.background = "#fff3e0";
+    statusEl.style.color = "#e65100";
+
+    try {
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      } else if (html5QrCode.isScanning) {
+        await html5QrCode.stop();
+      }
+
+      const scanConfig = {
+        fps: 10,
+        qrbox: { width: 280, height: 160 }
       };
-    },
-    experimentalFeatures: {
-      useBarCodeDetectorIfSupported: true // ใช้ Hardware Scanner ภายในเครื่อง
-    },
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.QR_CODE
-    ]
-  };
 
-  const cameraSettings = {
-    facingMode: "environment",
-    focusMode: "continuous",
-    width: { min: 640, ideal: 1280, max: 1920 },
-    height: { min: 480, ideal: 720, max: 1080 }
-  };
+      try {
+        // วิธีที่ 1: พยายามเปิดกล้องหลังแบบมาตรฐาน
+        await html5QrCode.start({ facingMode: "environment" }, scanConfig, onScanSuccess);
+      } catch (err1) {
+        // วิธีที่ 2: ถ้าวิธีแรกไม่ผ่าน ให้ดึงรายการกล้องทั้งหมด แล้วเลือกตัวหลังสุด (Back Camera)
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          const selectedCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear')) || devices[devices.length - 1];
+          await html5QrCode.start(selectedCam.id, scanConfig, onScanSuccess);
+        } else {
+          throw new Error("No cameras detected");
+        }
+      }
 
-  html5QrCode.start(cameraSettings, scannerConfig, onScanSuccess).catch(err => {
-    console.error(err);
-    document.getElementById('stepInfo').innerText = "❌ กรุณาอนุญาตการเข้าถึงกล้อง";
+      statusEl.innerText = "👉 พร้อมรับข้อมูล: [เลขครุภัณฑ์]";
+      statusEl.style.background = "#e8f5e9";
+      statusEl.style.color = "#1b5e20";
+    } catch (err) {
+      console.error("Camera Error:", err);
+      statusEl.innerText = "❌ กรุณากดปุ่ม 'เปิดในเบราว์เซอร์หลัก (Chrome/Safari)' หรือกดอนุญาตกล้อง";
+      statusEl.style.background = "#ffebee";
+      statusEl.style.color = "#c62828";
+    }
+  }
+
+  // เรียกเปิดกล้องทันทีเมื่อโหลดหน้าเว็บ
+  window.addEventListener('load', () => {
+    startCamera();
   });
 </script>
 </body>
