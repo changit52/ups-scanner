@@ -159,6 +159,19 @@
   let isScanLocked = false;
   let lastScannedTime = 0;
 
+  // ฟังก์ชันดึงเวลาปัจจุบันของประเทศไทย (GMT+7)
+  function getThaiDateTimeString() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const year = d.getFullYear();
+    const month = pad(d.getMonth() + 1);
+    const day = pad(d.getDate());
+    const hours = pad(d.getHours());
+    const minutes = pad(d.getMinutes());
+    const seconds = pad(d.getSeconds());
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     loadSavedData();
   });
@@ -292,7 +305,7 @@
       remark: document.getElementById('remark').value.trim(),
       building: document.getElementById('building').value.trim(),
       dept: document.getElementById('dept').value.trim(),
-      time: new Date().toISOString().substring(0, 19).replace('T', ' ')
+      time: getThaiDateTimeString()
     };
 
     if (!r.asset_id && !r.serial_no) {
@@ -378,7 +391,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `UPS_Data_${new Date().toISOString().slice(0,10)}.csv`;
+    link.download = `UPS_Data_${getThaiDateTimeString().slice(0,10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
